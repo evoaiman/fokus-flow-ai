@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,8 +100,9 @@ const Index = () => {
       };
     }
     
-    // Meeting/event detection
-    if (input.includes('meeting') || input.includes('call') || input.includes('appointment') || input.includes('at ')) {
+    // Meeting/event detection - improved
+    if (input.includes('meeting') || input.includes('call') || input.includes('appointment') || 
+        input.includes(' at ') || input.includes('scheduled') || input.includes('conference')) {
       const time = extractTime(userInput);
       const title = extractEventTitle(userInput);
       return {
@@ -112,13 +112,15 @@ const Index = () => {
       };
     }
     
-    // Task detection
-    if (input.includes('need to') || input.includes('have to') || input.includes('should') || input.includes('remind me')) {
+    // Task detection - improved
+    if (input.includes('need to') || input.includes('have to') || input.includes('should') || 
+        input.includes('remind me') || input.includes('todo') || input.includes('task')) {
       const task = extractTask(userInput);
+      const priority = extractPriority(userInput);
       return {
         message: `I've added "${task}" to your task list. Would you like me to suggest the best time to work on this based on your schedule?`,
         action: 'create_task',
-        data: { title: task, priority: 'medium' }
+        data: { title: task, priority }
       };
     }
     
@@ -164,44 +166,104 @@ const Index = () => {
     }
   };
 
-  // Helper functions for extracting information
+  // Improved helper functions for extracting information
   const extractName = (text: string) => {
-    const nameMatch = text.match(/i'?m\s+(\w+)|my name is\s+(\w+)/i);
-    return nameMatch ? (nameMatch[1] || nameMatch[2]) : '';
+    const namePatterns = [
+      /i'?m\s+(\w+)/i,
+      /my name is\s+(\w+)/i,
+      /call me\s+(\w+)/i
+    ];
+    
+    for (const pattern of namePatterns) {
+      const match = text.match(pattern);
+      if (match) return match[1];
+    }
+    return '';
   };
 
   const extractReligion = (text: string) => {
     if (text.toLowerCase().includes('muslim')) return 'muslim';
     if (text.toLowerCase().includes('christian')) return 'christian';
+    if (text.toLowerCase().includes('jewish')) return 'jewish';
+    if (text.toLowerCase().includes('hindu')) return 'hindu';
     return '';
   };
 
   const extractTime = (text: string) => {
-    const timeMatch = text.match(/(\d{1,2})\s*(?::(\d{2}))?\s*(am|pm|AM|PM)?/);
-    return timeMatch ? timeMatch[0] : null;
+    // Look for time patterns like "2pm", "at 3:30", "9am tomorrow"
+    const timePatterns = [
+      /(\d{1,2}):?(\d{2})?\s*(am|pm)/i,
+      /at\s+(\d{1,2}):?(\d{2})?\s*(am|pm)?/i,
+      /(\d{1,2})\s*(am|pm)/i
+    ];
+    
+    for (const pattern of timePatterns) {
+      const match = text.match(pattern);
+      if (match) {
+        return match[0].replace(/^at\s+/i, '').trim();
+      }
+    }
+    return null;
   };
 
   const extractEventTitle = (text: string) => {
-    if (text.toLowerCase().includes('meeting')) return 'Meeting';
-    if (text.toLowerCase().includes('call')) return 'Call';
-    if (text.toLowerCase().includes('appointment')) return 'Appointment';
-    return 'Event';
+    // Remove common time indicators and extract the actual event
+    let cleanText = text
+      .replace(/\b(at|on|tomorrow|today|next|this)\s+\d{1,2}:?\d{0,2}\s*(am|pm)?\b/gi, '')
+      .replace(/\b\d{1,2}:?\d{0,2}\s*(am|pm)\b/gi, '')
+      .replace(/\b(at|on|tomorrow|today|next|this)\b/gi, '')
+      .trim();
+
+    // Look for specific event patterns
+    if (cleanText.match(/client\s+call/i)) return 'Client Call';
+    if (cleanText.match(/team\s+meeting/i)) return 'Team Meeting';
+    if (cleanText.match(/doctor\s+appointment/i)) return 'Doctor Appointment';
+    if (cleanText.match(/job\s+interview/i)) return 'Job Interview';
+    if (cleanText.match(/conference\s+call/i)) return 'Conference Call';
+    if (cleanText.match(/lunch\s+meeting/i)) return 'Lunch Meeting';
+    
+    // Generic patterns
+    if (cleanText.match(/call/i)) return 'Call';
+    if (cleanText.match(/meeting/i)) return 'Meeting';
+    if (cleanText.match(/appointment/i)) return 'Appointment';
+    if (cleanText.match(/interview/i)) return 'Interview';
+    
+    // If we can't identify a specific type, try to extract the main subject
+    const words = cleanText.split(' ').filter(word => 
+      word.length > 2 && 
+      !['have', 'with', 'the', 'and', 'for'].includes(word.toLowerCase())
+    );
+    
+    if (words.length > 0) {
+      return words.slice(0, 3).map(word => 
+        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+      ).join(' ');
+    }
+    
+    return 'Scheduled Event';
   };
 
   const extractTask = (text: string) => {
-    const taskPatterns = [
-      /need to (.+)/i,
-      /have to (.+)/i,
-      /should (.+)/i,
-      /remind me to (.+)/i
-    ];
-    
-    for (const pattern of taskPatterns) {
-      const match = text.match(pattern);
-      if (match) return match[1];
+    // Remove task indicators and extract the actual task
+    let cleanText = text
+      .replace(/\b(need to|have to|should|remind me to|todo:?|task:?)\s*/gi, '')
+      .replace(/\b(today|tomorrow|later|soon)\b/gi, '')
+      .trim();
+
+    // Clean up the text and capitalize appropriately
+    if (cleanText.length > 0) {
+      return cleanText.charAt(0).toUpperCase() + cleanText.slice(1).toLowerCase();
     }
     
-    return text;
+    return 'New Task';
+  };
+
+  const extractPriority = (text: string) => {
+    if (text.toLowerCase().includes('urgent') || text.toLowerCase().includes('asap') || 
+        text.toLowerCase().includes('important')) return 'high';
+    if (text.toLowerCase().includes('when i can') || text.toLowerCase().includes('sometime') ||
+        text.toLowerCase().includes('eventually')) return 'low';
+    return 'medium';
   };
 
   return (
